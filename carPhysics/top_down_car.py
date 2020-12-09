@@ -1,4 +1,6 @@
 
+import numpy as np
+
 from framework import (Framework, Keys, main)
 from Box2D import *
 import math
@@ -9,8 +11,9 @@ class TDGroundArea(object):
     An area on the ground that the car can run over
     """
 
-    def __init__(self, friction_modifier):
+    def __init__(self, friction_modifier, gateIndex):
         self.friction_modifier = friction_modifier
+        self.gateIndex = gateIndex
 
 
 class TDTyre(object):
@@ -157,6 +160,9 @@ class TDCar(object):
             tyre.body.position = self.body.worldCenter + anchor
             joints.append(j)
 
+        # Track gating system
+        self.lastGated = -1
+
     def update(self, keys, hz):
         for tyre in self.tyres:
             tyre.update_friction()
@@ -212,33 +218,43 @@ class TopDownCarFramework(Framework):
 
         self.car = TDCar(self.world)
 
-        # traction areas
-        gnd1 = self.world.CreateStaticBody(userData={'obj': TDGroundArea(0.5)})
-        fixture = gnd1.CreatePolygonFixture(
-            box=(9, 7, (-10, 15), math.radians(20)))
-        # Set as sensors so that the car doesn't collide
-        fixture.sensor = True
+        # Add track sections
+        for trackSectionIndex in range(10):
+            width = 5
+            halfHeight = 2
 
-        gnd2 = self.world.CreateStaticBody(userData={'obj': TDGroundArea(0.2)})
-        fixture = gnd2.CreatePolygonFixture(
-            box=(9, 5, (5, 20), math.radians(-40)))
-        fixture.sensor = True
+            centreX = 0
+            centreY = (halfHeight + halfHeight*2)*trackSectionIndex
+            rotation = np.radians(0)
+
+            collisionObject = TDGroundArea(1, trackSectionIndex)
+
+            segment = self.world.CreateStaticBody(userData={"obj": collisionObject})
+            fixture = segment.CreatePolygonFixture(
+                box=(width, halfHeight, (centreX , centreY), rotation)
+            )
+            fixture.sensor = True
+            print(dir(fixture.shape))
+
 
     def Keyboard(self, key):
         key_map = self.key_map
         if key in key_map:
             self.pressed_keys.add(key_map[key])
         else:
-            super(TopDownCar, self).Keyboard(key)
+            super(TopDownCarFramework, self).Keyboard(key)
 
     def KeyboardUp(self, key):
         key_map = self.key_map
         if key in key_map:
             self.pressed_keys.remove(key_map[key])
         else:
-            super(TopDownCar, self).KeyboardUp(key)
+            super(TopDownCarFramework, self).KeyboardUp(key)
 
     def handle_contact(self, contact, began):
+
+        #print(contact)
+
         # A contact happened -- see if a wheel hit a
         # ground area
         fixture_a = contact.fixtureA
@@ -264,6 +280,10 @@ class TopDownCarFramework(Framework):
             else:
                 tyre.remove_ground_area(ground_area)
 
+                # Update gate, if required
+                if self.car.lastGated < ground_area.gateIndex:
+                    self.car.lastGated = ground_area.gateIndex
+
     def BeginContact(self, contact):
         self.handle_contact(contact, True)
 
@@ -277,6 +297,9 @@ class TopDownCarFramework(Framework):
 
         tractions = [tyre.current_traction for tyre in self.car.tyres]
         self.Print('Current tractions: %s' % tractions)
+
+        #
+        self.Print("Car Gate %d" % self.car.lastGated)
 
 
 if __name__ == '__main__':
