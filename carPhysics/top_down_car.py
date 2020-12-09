@@ -13,7 +13,7 @@ class TDGroundArea(object):
         self.friction_modifier = friction_modifier
 
 
-class TDTire(object):
+class TDTyre(object):
 
     def __init__(self, car, max_forward_speed=100.0,
                  max_backward_speed=-20, max_drive_force=150,
@@ -122,14 +122,14 @@ class TDCar(object):
                 (-2, -3),
                 ]
 
-    tire_anchors = [(-2.0, -2),
+    tyre_anchors = [(-2.0, -2),
                     (2.0, -2),
                     (-2.0, 4),
                     (2.0, 4),
                     ]
 
-    def __init__(self, world, vertices=None, tire_anchors=None,
-                 density=0.1, position=(0,0), **tire_kws):
+    def __init__(self, world, vertices=None, tyre_anchors=None,
+                 density=0.1, position=(0,0), **tyre_kws):
         if vertices is None:
             vertices = TDCar.vertices
 
@@ -137,15 +137,15 @@ class TDCar(object):
         self.body.CreatePolygonFixture(vertices=vertices, density=density)
         self.body.userData = {'obj': self}
 
-        self.tires = [TDTire(self, **tire_kws) for i in range(4)]
+        self.tyres = [TDTyre(self, **tyre_kws) for i in range(4)]
 
-        if tire_anchors is None:
-            anchors = TDCar.tire_anchors
+        if tyre_anchors is None:
+            anchors = TDCar.tyre_anchors
 
         joints = self.joints = []
-        for tire, anchor in zip(self.tires, anchors):
+        for tyre, anchor in zip(self.tyres, anchors):
             j = world.CreateRevoluteJoint(bodyA=self.body,
-                                          bodyB=tire.body,
+                                          bodyB=tyre.body,
                                           localAnchorA=anchor,
                                           localAnchorB=(0, 0),
                                           enableMotor=False,
@@ -154,15 +154,15 @@ class TDCar(object):
                                           lowerAngle=0,
                                           upperAngle=0
                                           )
-            tire.body.position = self.body.worldCenter + anchor
+            tyre.body.position = self.body.worldCenter + anchor
             joints.append(j)
 
     def update(self, keys, hz):
-        for tire in self.tires:
-            tire.update_friction()
+        for tyre in self.tyres:
+            tyre.update_friction()
 
-        for tire in self.tires:
-            tire.update_drive(keys)
+        for tyre in self.tyres:
+            tyre.update_drive(keys)
 
         # steering?
         lock_angle = math.radians(40.)
@@ -187,17 +187,17 @@ class TDCar(object):
             angle_to_turn = turn_per_timestep
 
         new_angle = angle_now + angle_to_turn
-        # Rotate the tires by locking the limits:
+        # Rotate the tyres by locking the limits:
         front_left_joint.SetLimits(new_angle, new_angle)
         front_right_joint.SetLimits(new_angle, new_angle)
 
 
-class TopDownCar(Framework):
+class TopDownCarFramework(Framework):
     name = "Top Down Car"
     description = "test"
 
     def __init__(self):
-        super(TopDownCar, self).__init__()
+        super(TopDownCarFramework, self).__init__()
 
         # Top-down: no gravity
         self.world.gravity = (0, 0)
@@ -249,20 +249,20 @@ class TopDownCar(Framework):
         if not ud_a or not ud_b:
             return
 
-        tire = None
+        tyre = None
         ground_area = None
         for ud in (ud_a, ud_b):
             obj = ud['obj']
-            if isinstance(obj, TDTire):
-                tire = obj
+            if isinstance(obj, TDTyre):
+                tyre = obj
             elif isinstance(obj, TDGroundArea):
                 ground_area = obj
 
-        if ground_area is not None and tire is not None:
+        if ground_area is not None and tyre is not None:
             if began:
-                tire.add_ground_area(ground_area)
+                tyre.add_ground_area(ground_area)
             else:
-                tire.remove_ground_area(ground_area)
+                tyre.remove_ground_area(ground_area)
 
     def BeginContact(self, contact):
         self.handle_contact(contact, True)
@@ -273,11 +273,11 @@ class TopDownCar(Framework):
     def Step(self, settings):
         self.car.update(self.pressed_keys, settings.hz)
 
-        super(TopDownCar, self).Step(settings)
+        super(TopDownCarFramework, self).Step(settings)
 
-        tractions = [tire.current_traction for tire in self.car.tires]
+        tractions = [tyre.current_traction for tyre in self.car.tyres]
         self.Print('Current tractions: %s' % tractions)
 
 
 if __name__ == '__main__':
-    main(TopDownCar)
+    main(TopDownCarFramework)
