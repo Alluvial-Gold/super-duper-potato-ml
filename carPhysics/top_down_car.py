@@ -5,7 +5,6 @@ from framework import (Framework, Keys, main)
 from Box2D import *
 import math
 
-
 class TDGroundArea(object):
     """
     An area on the ground that the car can run over
@@ -237,6 +236,9 @@ class TopDownCarFramework(Framework):
         numCars = 2
         self.cars = [TDCar(self.world, position=(10*i, 0)) for i in range(numCars)]
 
+        self.wall_body = self.world.CreateStaticBody(position=(0, 0))
+        self.set_up_walls()
+
         # Add track sections
         for trackSectionIndex in range(10):
             width = 5
@@ -254,6 +256,20 @@ class TopDownCarFramework(Framework):
             )
             fixture.sensor = True
 
+    def create_wall_segment(self, points):
+        for p1, p2 in zip(points, points[1:]):
+            edge = b2EdgeShape(vertices=[p1, p2])
+            self.wall_body.CreateFixture(b2FixtureDef(shape=edge))
+
+    def set_up_walls(self):
+        # TODO the points should come from a file or something?
+        outsideWallPoints = ((-50, 50), (-50, -50), (50, -50), (50, 50), (-50, 50))
+        insideWallPoints = ((-30, 20), (-30, -20), (-10, -20), (-10, 20), (-30, 20))
+        segmentPoints = ((30, 20), (30, -20), (10, -20), (10, 20))
+
+        self.create_wall_segment(outsideWallPoints)
+        self.create_wall_segment(insideWallPoints)
+        self.create_wall_segment(segmentPoints)
 
     def Keyboard(self, key):
         key_map = self.key_map
