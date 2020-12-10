@@ -24,6 +24,7 @@ class TDTyre(object):
                  dimensions=(0.5, 1.25), density=1.0,
                  position=(0, 0)):
 
+        self.car = car
         world = car.body.world
 
         self.current_traction = 1
@@ -40,6 +41,15 @@ class TDTyre(object):
         self.body = world.CreateDynamicBody(position=position)
         self.body.CreatePolygonFixture(box=dimensions, density=density, friction=friction)
         self.body.userData = {'obj': self}
+
+        carCollisionFilter = b2Filter(
+            groupIndex=-1,
+            categoryBits=0x003,
+            maskBits=0xFFFF
+        )
+        self.body.fixtures[0].filterData = carCollisionFilter
+
+
 
     def get_lateral_velocity(self):
         current_right_normal = self.body.GetWorldVector(b2Vec2(1, 0))
@@ -136,10 +146,18 @@ class TDCar(object):
         if vertices is None:
             vertices = TDCar.vertices
 
+
         self.body = world.CreateDynamicBody(position=position)
         self.body.CreatePolygonFixture(vertices=vertices, density=density)
         self.body.userData = {'obj': self}
 
+        # Don't let cars collide with each other
+        carCollisionFilter = b2Filter(
+            groupIndex=-1,
+            categoryBits=0x003,
+            maskBits=0xFFFF
+        )
+        self.body.fixtures[0].filterData = carCollisionFilter
         self.tyres = [TDTyre(self, **tyre_kws) for i in range(4)]
 
         if tyre_anchors is None:
@@ -216,7 +234,8 @@ class TopDownCarFramework(Framework):
 
         self.pressed_keys = set()
 
-        self.car = TDCar(self.world)
+        numCars = 2
+        self.cars = [TDCar(self.world, position=(10*i, 0)) for i in range(numCars)]
 
         # Add track sections
         for trackSectionIndex in range(10):
@@ -234,7 +253,6 @@ class TopDownCarFramework(Framework):
                 box=(width, halfHeight, (centreX , centreY), rotation)
             )
             fixture.sensor = True
-            print(dir(fixture.shape))
 
 
     def Keyboard(self, key):
@@ -280,9 +298,10 @@ class TopDownCarFramework(Framework):
             else:
                 tyre.remove_ground_area(ground_area)
 
+
                 # Update gate, if required
-                if self.car.lastGated < ground_area.gateIndex:
-                    self.car.lastGated = ground_area.gateIndex
+                if tyre.car.lastGated == (ground_area.gateIndex - 1):
+                    tyre.car.lastGated = ground_area.gateIndex
 
     def BeginContact(self, contact):
         self.handle_contact(contact, True)
@@ -291,15 +310,17 @@ class TopDownCarFramework(Framework):
         self.handle_contact(contact, False)
 
     def Step(self, settings):
-        self.car.update(self.pressed_keys, settings.hz)
+        for car in [self.cars[0]]:
+            car.update(self.pressed_keys, settings.hz)
 
         super(TopDownCarFramework, self).Step(settings)
 
-        tractions = [tyre.current_traction for tyre in self.car.tyres]
-        self.Print('Current tractions: %s' % tractions)
+        for carNumber, car in enumerate(self.cars):
+            tractions = [tyre.current_traction for tyre in car.tyres]
+            self.Print('Car %d: Current tractions: %s' % (carNumber, tractions))
 
         #
-        self.Print("Car Gate %d" % self.car.lastGated)
+        self.Print("Car Gate %d" % self.cars[0].lastGated)
 
 
 if __name__ == '__main__':
