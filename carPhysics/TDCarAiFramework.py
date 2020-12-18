@@ -6,6 +6,43 @@ from Box2D import *
 import math
 from TDCarAi import TDCarAi
 
+
+class RayCastClosestCallback(b2RayCastCallback):
+    # TODO move somewhere else later?
+    """This callback finds the closest hit. Copied from
+     https://github.com/openai/box2d-py/blob/master/examples/raycast.py"""
+
+    def __repr__(self):
+        return 'Closest hit'
+
+    def __init__(self, **kwargs):
+        b2RayCastCallback.__init__(self, **kwargs)
+        self.fixture = None
+        self.hit = False
+
+    def ReportFixture(self, fixture, point, normal, fraction):
+        '''
+        Called for each fixture found in the query. You control how the ray
+        proceeds by returning a float that indicates the fractional length of
+        the ray. By returning 0, you set the ray length to zero. By returning
+        the current fraction, you proceed to find the closest point. By
+        returning 1, you continue with the original ray clipping. By returning
+        -1, you will filter out the current fixture (the ray will not hit it).
+        '''
+
+        # Filter using car_collision_filter values - TODO neaten this
+        if hasattr(fixture, 'filterData'):
+            if fixture.filterData.categoryBits == 0x003:
+                return -1
+
+        self.hit = True
+        self.fixture = fixture
+        self.point = b2Vec2(point)
+        self.normal = b2Vec2(normal)
+
+        return fraction
+
+
 class TDCarAiFramework(Framework):
     name = "Top Down Car (AI)"
     description = "Top down car with AI"
@@ -16,7 +53,7 @@ class TDCarAiFramework(Framework):
         # Top-down: no gravity
         self.world.gravity = (0, 0)
 
-        num_cars = 2
+        num_cars = 1
         self.cars = [TDCarAi(self.world, position=(10*i, 0)) for i in range(num_cars)]
 
         self.wall_body = self.world.CreateStaticBody(position=(0, 0))
@@ -73,10 +110,45 @@ class TDCarAiFramework(Framework):
     def EndContact(self, contact):
         self.handle_contact(contact, False)
 
+    def DrawRaycastHit(self, point1, cb_point, cb_normal):
+        cb_point = self.renderer.to_screen(cb_point)
+        head = b2Vec2(cb_point) + 0.5 * cb_normal
+
+        p1_color = b2Color(0.4, 0.9, 0.4)
+        s1_color = b2Color(0.8, 0.8, 0.8)
+        s2_color = b2Color(0.9, 0.9, 0.4)
+
+        cb_normal = self.renderer.to_screen(cb_normal)
+        self.renderer.DrawPoint(cb_point, 5.0, p1_color)
+        self.renderer.DrawSegment(point1, cb_point, s1_color)
+        self.renderer.DrawSegment(cb_point, head, s2_color)
+
+    def DoRaycast(self, car, angle, length=50):
+        # TODO make angle relative to direction of car
+        callback = RayCastClosestCallback()
+        wc = car.body.worldCenter
+        point1 = wc
+        change = b2Vec2(np.sin(np.deg2rad(angle)), np.cos(np.deg2rad(angle))) * length
+        point2 = wc + change
+
+        self.world.RayCast(callback, point1, point2)
+
+        point1 = self.renderer.to_screen(point1)
+        point2 = self.renderer.to_screen(point2)
+
+        if callback.hit:
+            # TODO return distance
+            self.DrawRaycastHit(point1, callback.point, callback.normal)
+        else:
+            self.renderer.DrawSegment(point1, point2, b2Color(0.9, 0.5, 0.5))
+
     def Step(self, settings):
         # TODO put the controller section in here
         desired_speed = 30
         desired_angle = math.radians(40)
+
+        for angle in range(0, 360, 45):
+            self.DoRaycast(self.cars[0], angle, 100)
 
         for car in self.cars:
             car.update(desired_speed, desired_angle, settings.hz)
