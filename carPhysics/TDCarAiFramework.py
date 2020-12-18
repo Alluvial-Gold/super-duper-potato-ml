@@ -124,34 +124,41 @@ class TDCarAiFramework(Framework):
         self.renderer.DrawSegment(cb_point, head, s2_color)
 
     def DoRaycast(self, car, angle, length=50):
-        # TODO make angle relative to direction of car
         callback = RayCastClosestCallback()
+
         wc = car.body.worldCenter
+        car_normal = car.body.GetWorldVector(b2Vec2(0, 1))
+        body_angle = np.arctan2(car_normal(1), car_normal(0))
+        total_angle = body_angle + np.deg2rad(angle)
+
         point1 = wc
-        change = b2Vec2(np.sin(np.deg2rad(angle)), np.cos(np.deg2rad(angle))) * length
+        change = b2Vec2(np.cos(total_angle), np.sin(total_angle)) * length
         point2 = wc + change
 
         self.world.RayCast(callback, point1, point2)
 
-        point1 = self.renderer.to_screen(point1)
-        point2 = self.renderer.to_screen(point2)
-
         if callback.hit:
-            # TODO return distance
+            distance = np.linalg.norm(point1 - callback.point)
+            point1 = self.renderer.to_screen(point1)
             self.DrawRaycastHit(point1, callback.point, callback.normal)
         else:
+            distance = length
+            point1 = self.renderer.to_screen(point1)
+            point2 = self.renderer.to_screen(point2)
             self.renderer.DrawSegment(point1, point2, b2Color(0.9, 0.5, 0.5))
+
+        return distance
+
 
     def Step(self, settings):
         # TODO put the controller section in here
-        desired_speed = 30
+        desired_speed = 10
         desired_angle = math.radians(40)
-
-        for angle in range(0, 360, 45):
-            self.DoRaycast(self.cars[0], angle, 100)
 
         for car in self.cars:
             car.update(desired_speed, desired_angle, settings.hz)
+            for angle in range(-90, 91, 30):
+                self.DoRaycast(car, angle)
 
         super(TDCarAiFramework, self).Step(settings)
 
