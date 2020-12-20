@@ -133,6 +133,9 @@ class TDCarAiFramework(Framework):
 
     def Step(self, settings):
         # TODO put the controller section in here
+        observations = self.cars[0].get_observations()
+        self.Print("Speed: " + f'{observations[0]:.2f}' + " Angle: " + f'{observations[1]:.2f}')
+
         desired_speed = 50
         desired_angle = math.radians(-5)
 

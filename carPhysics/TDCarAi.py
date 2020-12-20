@@ -164,6 +164,25 @@ class TDCarAi(object):
         # Track gating system
         self.lastGated = -1
 
+    def get_observations(self):
+        # Get speed from front left tyre
+        tyre = self.tyres[2]
+        tyre_forward_normal = tyre.body.GetWorldVector(b2Vec2(0, 1))
+        tyre_forward_velocity = b2Dot(tyre_forward_normal, tyre.body.linearVelocity) * tyre_forward_normal
+        current_speed = tyre_forward_velocity.Normalize()
+
+        # Get angle from front left tyre
+        tyre_joint = self.joints[2]
+        current_angle = np.rad2deg(tyre_joint.lowerLimit)
+
+        # Get stored raycast distances
+        raycast_distances = np.array(self.raycast_distances)
+
+        observation_array = np.array([current_speed, current_angle])
+        observation_array = np.append(observation_array, raycast_distances)
+
+        return observation_array
+
     def do_raycast(self, world, angle):
         callback = RayCastClosestCallback()
 
