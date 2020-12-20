@@ -136,4 +136,16 @@
        x="69.925598"
        y="111.12501" />
   </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer4"
+     inkscape:label="meta">
+    <ellipse
+       style="fill:#ff0000;fill-rule:evenodd;stroke-width:0.264583"
+       id="start"
+       cx="-4.6352944"
+       cy="24.77413"
+       rx="7.5595236"
+       ry="4.9136906" />
+  </g>
 </svg>

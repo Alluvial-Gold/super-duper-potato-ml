@@ -170,17 +170,29 @@ def read_svg_map(filename, debug_plot_map=False):
             ax.text(center_x, center_y, "Gate %d" % rect_data["number"], 
                     horizontalalignment="center", verticalalignment="center")
 
+    # Get meta/other
+    meta_layer_path = r"//svg:g[@inkscape:label='meta']"
+    start_path = r"./svg:ellipse[@id='start']"
+    meta_layer = tree.xpath(meta_layer_path, namespaces=namespaces)[0]
+
+    start_elem = meta_layer.xpath(start_path, namespaces=namespaces)[0]
+    start_coordinate = (float( start_elem.get("cx") ), -float( start_elem.get("cy") ))  # Note y flipped here
+
+    if debug_plot_map:
+        ax.plot(start_coordinate[0], start_coordinate[1], "ko", label="Race Start")
+
+
 
     if debug_plot_map:
         ax.axis("equal")
         plt.show()
 
-    return (all_wall_points, all_rect_coords)
+    return (all_wall_points, all_rect_coords, start_coordinate)
 
 if __name__ == "__main__":
     filename = "test.svg"
 
-    all_wall_points, all_rect_coords = read_svg_map(filename, True)
+    all_wall_points, all_rect_coords, start_pos = read_svg_map(filename, True)
 
 
         
