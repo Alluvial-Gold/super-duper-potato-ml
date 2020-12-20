@@ -126,8 +126,6 @@ def read_svg_map(filename, debug_plot_map=False):
         # Flip y axis
         points[:, 1] *= -1
 
-        print(points)
-
         curveEval = bezierEval(points.T).T
         all_wall_points.append(curveEval)
 
@@ -176,7 +174,7 @@ def read_svg_map(filename, debug_plot_map=False):
     meta_layer = tree.xpath(meta_layer_path, namespaces=namespaces)[0]
 
     start_elem = meta_layer.xpath(start_path, namespaces=namespaces)[0]
-    start_coordinate = (float( start_elem.get("cx") ), -float( start_elem.get("cy") ))  # Note y flipped here
+    start_coordinate = np.array([float( start_elem.get("cx") ), -float( start_elem.get("cy") )])  # Note y flipped here
 
     if debug_plot_map:
         ax.plot(start_coordinate[0], start_coordinate[1], "ko", label="Race Start")
