@@ -1,6 +1,41 @@
 from Box2D import *
 import math
+import numpy as np
 
+
+class RayCastClosestCallback(b2RayCastCallback):
+    """This callback finds the closest hit. Copied from
+     https://github.com/openai/box2d-py/blob/master/examples/raycast.py"""
+
+    def __repr__(self):
+        return 'Closest hit'
+
+    def __init__(self, **kwargs):
+        b2RayCastCallback.__init__(self, **kwargs)
+        self.fixture = None
+        self.hit = False
+
+    def ReportFixture(self, fixture, point, normal, fraction):
+        '''
+        Called for each fixture found in the query. You control how the ray
+        proceeds by returning a float that indicates the fractional length of
+        the ray. By returning 0, you set the ray length to zero. By returning
+        the current fraction, you proceed to find the closest point. By
+        returning 1, you continue with the original ray clipping. By returning
+        -1, you will filter out the current fixture (the ray will not hit it).
+        '''
+
+        # Filter using car_collision_filter values - TODO neaten this
+        if hasattr(fixture, 'filterData'):
+            if fixture.filterData.categoryBits == 0x003:
+                return -1
+
+        self.hit = True
+        self.fixture = fixture
+        self.point = b2Vec2(point)
+        self.normal = b2Vec2(normal)
+
+        return fraction
 
 class TDTyreAi(object):
 
@@ -82,7 +117,9 @@ class TDCarAi(object):
 
     def __init__(self, world, vertices=None, tyre_anchors=None,
                  max_forward_speed=100.0, max_backward_speed=-20,
-                 density=0.1, position=(0, 0), **tyre_kws):
+                 density=0.1, position=(0, 0),
+                 raycast_angles=(-90, -45, 0, 45, 90), max_raycast_dist=100,
+                 **tyre_kws):
         if vertices is None:
             vertices = TDCarAi.vertices
 
@@ -92,6 +129,10 @@ class TDCarAi(object):
 
         self.max_forward_speed = max_forward_speed
         self.max_backward_speed = max_backward_speed
+
+        self.raycast_angles = raycast_angles
+        self.raycast_distances = [0 for a in raycast_angles]
+        self.max_raycast_dist = max_raycast_dist
 
         # Don't let cars collide with each other
         car_collision_filter = b2Filter(
@@ -123,7 +164,33 @@ class TDCarAi(object):
         # Track gating system
         self.lastGated = -1
 
-    def update(self, desired_speed, desired_angle, hz):
+    def do_raycast(self, world, angle):
+        callback = RayCastClosestCallback()
+
+        length = self.max_raycast_dist
+
+        wc = self.body.worldCenter
+        car_normal = self.body.GetWorldVector(b2Vec2(0, 1))
+        body_angle = np.arctan2(car_normal(1), car_normal(0))
+        total_angle = body_angle + np.deg2rad(angle)
+
+        point1 = wc
+        change = b2Vec2(np.cos(total_angle), np.sin(total_angle)) * length
+        point2 = wc + change
+
+        world.RayCast(callback, point1, point2)
+
+        if callback.hit:
+            distance = np.linalg.norm(point1 - callback.point)
+        else:
+            distance = length
+
+        return distance
+
+    def update(self, desired_speed, desired_angle, world, hz):
+        # Ray casting
+        for idx, angle in enumerate(self.raycast_angles):
+            self.raycast_distances[idx] = self.do_raycast(world, angle)
 
         for tyre in self.tyres:
             tyre.update_friction()
