@@ -25,24 +25,25 @@ class TDCarAiFramework(Framework):
         # Top-down: no gravity
         self.world.gravity = (0, 0)
 
-        num_cars = 2
-        self.cars = [TDCarAi(self.world, position=(10*i, 0), raycast_angles=(-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)) for i in range(num_cars)]
-
+        # Create map
         self.wall_body = self.world.CreateStaticBody(position=(0, 0))
-        self.set_up_walls()
+        start_coordinate = self.create_map()
 
-        # TODO add reward gates
+        num_cars = 2
+        raycast_angles = (-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)
+        self.cars = [TDCarAi(self.world, position=start_coordinate,
+                             raycast_angles=raycast_angles) for i in range(num_cars)]
 
     def create_wall_segment(self, points):
         for p1, p2 in zip(points, points[1:]):
             edge = b2EdgeShape(vertices=[p1, p2])
             self.wall_body.CreateFixture(b2FixtureDef(shape=edge))
 
-    def set_up_walls(self):
+    def create_map(self):
         filename = "test.svg"
-        all_wall_points, all_gate_data = mapReader.read_svg_map(filename)
+        all_wall_points, all_gate_data, start_coordinate = mapReader.read_svg_map(filename)
 
-        # Create Walls
+        # Create walls
         for wall_section in all_wall_points:
             # Convert the wall section into a bunch of tuples
             wall_points = []
@@ -72,6 +73,8 @@ class TDCarAiFramework(Framework):
             fixture.sensor = True
             fixture.filterData = car_collision_filter
 
+        # Return start point
+        return start_coordinate
 
     def handle_contact(self, contact, began):
         # TODO add reward gate mechanics
