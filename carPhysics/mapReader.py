@@ -157,6 +157,7 @@ def read_svg_map(filename, debug_plot_map=False):
 
         # Flip y
         rect_data["y"] *= -1
+        rect_data["y"] -= rect_data["height"]
         
         all_rect_coords.append(rect_data)
 
