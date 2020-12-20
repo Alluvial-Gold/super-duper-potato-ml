@@ -1,10 +1,11 @@
+import math
 
 import numpy as np
+from Box2D import *
 
 from framework import (Framework, Keys, main)
-from Box2D import *
-import math
 from TDCarAi import TDCarAi
+import mapReader
 
 
 class RayCastClosestCallback(b2RayCastCallback):
