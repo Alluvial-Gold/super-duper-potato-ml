@@ -43,6 +43,13 @@ class RayCastClosestCallback(b2RayCastCallback):
 
         return fraction
 
+class TDGate(object):
+    """
+    An area on the ground that the car can run over
+    """
+
+    def __init__(self, gateIndex):
+        self.gateIndex = gateIndex
 
 class TDCarAiFramework(Framework):
     name = "Top Down Car (AI)"
@@ -68,9 +75,39 @@ class TDCarAiFramework(Framework):
             self.wall_body.CreateFixture(b2FixtureDef(shape=edge))
 
     def set_up_walls(self):
-        # TODO add tracks from file
-        outsideWallPoints = ((-50, 50), (-50, -50), (50, -50), (50, 50), (-50, 50))
-        self.create_wall_segment(outsideWallPoints)
+        filename = "test.svg"
+        all_wall_points, all_gate_data = mapReader.read_svg_map(filename)
+
+        # Create Walls
+        for wall_section in all_wall_points:
+            # Convert the wall section into a bunch of tuples
+            wall_points = []
+            for row_idx in range(wall_section.shape[0]):
+                wall_points.append(tuple(wall_section[row_idx, :]))
+
+            self.create_wall_segment(wall_points)
+
+        # Create gates
+        for gate in all_gate_data:
+            collisionObject = TDGate(gate["number"])
+
+            center_x = gate["x"] + gate["width"]/2
+            center_y = gate["y"] + gate["height"]/2
+            rotation = 0
+
+            car_collision_filter = b2Filter(
+                groupIndex=1,
+                categoryBits=0x003,
+                maskBits=0xFFFF
+            )
+
+            segment = self.world.CreateStaticBody(userData={"obj": collisionObject})
+            fixture = segment.CreatePolygonFixture(
+                box=(gate["width"]/2, gate["height"]/2, (center_x , center_y), rotation)
+            )
+            fixture.sensor = True
+            fixture.filterData = car_collision_filter
+
 
     def handle_contact(self, contact, began):
         # TODO add reward gate mechanics
@@ -85,25 +122,22 @@ class TDCarAiFramework(Framework):
         if not ud_a or not ud_b:
             return
 
-        '''tyre = None
-        ground_area = None
+        car = None
+        gate = None
         for ud in (ud_a, ud_b):
             obj = ud['obj']
-            if isinstance(obj, TDTyreAi):
-                tyre = obj
-            elif isinstance(obj, TDGroundArea):
-                ground_area = obj
+            if isinstance(obj, TDCarAi):
+                car = obj
+            elif isinstance(obj, TDGate):
+                gate = obj
 
-        if ground_area is not None and tyre is not None:
+        if gate is not None and car is not None:
             if began:
-                tyre.add_ground_area(ground_area)
+                pass
             else:
-                tyre.remove_ground_area(ground_area)
-
-
                 # Update gate, if required
-                if tyre.car.lastGated == (ground_area.gateIndex - 1):
-                    tyre.car.lastGated = ground_area.gateIndex'''
+                if car.lastGated == (gate.gateIndex - 1):
+                    car.lastGated = gate.gateIndex
 
     def BeginContact(self, contact):
         self.handle_contact(contact, True)
@@ -153,8 +187,8 @@ class TDCarAiFramework(Framework):
 
     def Step(self, settings):
         # TODO put the controller section in here
-        desired_speed = 10
-        desired_angle = math.radians(40)
+        desired_speed = 50
+        desired_angle = math.radians(-5)
 
         for car in self.cars:
             car.update(desired_speed, desired_angle, settings.hz)
