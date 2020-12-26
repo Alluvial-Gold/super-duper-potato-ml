@@ -118,7 +118,7 @@ class TDCarAi(object):
     def __init__(self, world, vertices=None, tyre_anchors=None,
                  max_forward_speed=100.0, max_backward_speed=-20,
                  density=0.1, position=(0, 0),
-                 raycast_angles=(-90, -45, 0, 45, 90), max_raycast_dist=100,
+                 raycast_angles=(-90, -45, 0, 45, 90), max_raycast_dist=1000,
                  **tyre_kws):
         if vertices is None:
             vertices = TDCarAi.vertices
