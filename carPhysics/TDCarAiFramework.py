@@ -7,6 +7,18 @@ from framework import (Framework, Keys, main)
 from TDCarAi import TDCarAi
 import mapReader
 
+class Controller():
+    """
+    Somewhere to store as-yet undetermined state for the AI
+    """    
+    def __init__(self):
+        self.car_done_count = 0
+        self.speed = 0
+        self.angle = 0
+        
+        self.k = 1/(2000*np.random.rand(1)[0])
+        print(self.k)
+
 class TDGate(object):
     """
     An area on the ground that the car can run over
@@ -29,10 +41,13 @@ class TDCarAiFramework(Framework):
         self.wall_body = self.world.CreateStaticBody(position=(0, 0))
         start_coordinate = self.create_map()
 
-        num_cars = 2
+        num_cars = 100
         raycast_angles = (-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)
+        raycast_angles = (-45, 45)
         self.cars = [TDCarAi(self.world, position=start_coordinate,
                              raycast_angles=raycast_angles) for i in range(num_cars)]
+
+        self.controllers = [Controller() for i in range(num_cars)]
 
     def create_wall_segment(self, points):
         for p1, p2 in zip(points, points[1:]):
@@ -132,29 +147,91 @@ class TDCarAiFramework(Framework):
             self.renderer.DrawSegment(point1, point2, b2Color(0.9, 0.5, 0.5))
 
     def Step(self, settings):
-        # TODO put the controller section in here
+
         observations = self.cars[0].get_observations()
         self.Print("Speed: " + f'{observations[0]:.2f}' + " Angle: " + f'{observations[1]:.2f}')
 
-        desired_speed = 50
-        desired_angle = math.radians(-5)
-
-        for car in self.cars:
-            car.update(desired_speed, desired_angle, self.world, settings.hz)
-
         # Draw raycast
-        for car in self.cars:
+        for car in self.cars[:2]:
             for idx in range(len(car.raycast_angles)):
                 self.DrawCarRaycast(car, car.raycast_angles[idx], car.raycast_distances[idx])
+
+
+
+        # TODO put the controller section in here
+
+        """
+        The AI controller is designed to be roughly similar to an OpenAI Gym
+        This, in the simple case, takes the form:
+
+        ```
+        while True:
+            world.simulate()
+            action = AiMagic(observations)
+            observation, reward, done, info = env.step(action)
+
+            if done:
+                break
+        ```
+
+        As this is being called from inside the Step, it's all a bit inside-out.
+        """
+        for car_index, (car, controller) in enumerate(zip(self.cars, self.controllers)):
+            observations = car.get_observations()
+            reward = car.lastGated
+
+            # TODO: Integrate `Done` calculation better
+            # Do `Done` based on if the car has been still for a while
+            if( abs(observations[0]) < 4):
+                controller.car_done_count += 1
+            else:
+                controller.car_done_count = 0
+            max_done = 100
+            if controller.car_done_count > max_done:
+                done = True
+                controller.car_done_count = max_done  # cap it for numerical and presentation reasons.
+                car.body.active = False
+                for tyre in car.tyres:
+                    tyre.body.active = False
+            else:
+                done = False
+
+
+            
+            # The `action` consists of a speed and a direction
+            #   The calculation of this should probably be more in the controller
+            # Just have a constant speed
+            controller.speed = 50
+
+            # Adjust angle based on the observations
+            raycast_distances = observations[2:]
+            port_ray = raycast_distances[-1]
+            starboard_ray = raycast_distances[0]
+            difference = port_ray - starboard_ray
+            controller.angle += np.deg2rad( controller.k * difference )
+            #controller.angle = 0
+            # Reset controller angle if they are about equal
+            if abs(difference) < 3:
+                controller.angle = 0
+
+            #self.Print(f"Starboard:{starboard_ray:.2f}, Port:{port_ray:.2f}")
+            #self.Print("Hence condition:%s for direction %.2f" % (port_ray < starboard_ray, np.rad2deg(controller.angle)))
+            #self.Print(f"Car {car_index}: Done Count:{controller.car_done_count}: Done:{done}")
+
+            # Update car
+            if not done:
+                car.update(controller.speed, controller.angle, self.world, settings.hz)
+
+
 
         super(TDCarAiFramework, self).Step(settings)
 
         for carNumber, car in enumerate(self.cars):
             tractions = [tyre.current_traction for tyre in car.tyres]
-            self.Print('Car %d: Current tractions: %s' % (carNumber, tractions))
+            #self.Print('Car %d: Current tractions: %s' % (carNumber, tractions))
 
         #
-        self.Print("Car Gate %d" % self.cars[0].lastGated)
+        #self.Print("Car Gate %d" % self.cars[0].lastGated)
 
 
 if __name__ == '__main__':
