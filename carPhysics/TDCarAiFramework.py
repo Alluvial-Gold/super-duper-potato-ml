@@ -17,7 +17,7 @@ class Controller():
         self.angle = 0
         
         self.k = 1/(2000*np.random.rand(1)[0])
-        print(self.k)
+        self.speed_k = np.random.rand(1)[0]
 
 class TDGate(object):
     """
@@ -41,9 +41,9 @@ class TDCarAiFramework(Framework):
         self.wall_body = self.world.CreateStaticBody(position=(0, 0))
         start_coordinate = self.create_map()
 
-        num_cars = 100
+        num_cars = 200
         raycast_angles = (-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)
-        raycast_angles = (-45, 45)
+        raycast_angles = (-45, 0, 45)
         self.cars = [TDCarAi(self.world, position=start_coordinate,
                              raycast_angles=raycast_angles) for i in range(num_cars)]
 
@@ -197,11 +197,16 @@ class TDCarAiFramework(Framework):
             
             # The `action` consists of a speed and a direction
             #   The calculation of this should probably be more in the controller
+            raycast_distances = observations[2:]
+
             # Just have a constant speed
-            controller.speed = 50
+            #controller.speed = 50
+
+            #speed proportional to centre ray
+            centre_ray = raycast_distances[len(raycast_distances)//2]
+            controller.speed = 40 + controller.speed_k * centre_ray
 
             # Adjust angle based on the observations
-            raycast_distances = observations[2:]
             port_ray = raycast_distances[-1]
             starboard_ray = raycast_distances[0]
             difference = port_ray - starboard_ray
