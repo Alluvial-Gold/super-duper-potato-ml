@@ -190,9 +190,6 @@ class TDCarAiFramework(Framework):
             if controller.car_done_count > max_done:
                 done = True
                 controller.car_done_count = max_done  # cap it for numerical and presentation reasons.
-                car.body.active = False
-                for tyre in car.tyres:
-                    tyre.body.active = False
             else:
                 done = False
 
@@ -221,6 +218,9 @@ class TDCarAiFramework(Framework):
             # Update car
             if not done:
                 car.update(controller.speed, controller.angle, self.world, settings.hz)
+            else:
+                car.active = False
+
 
 
 

@@ -247,3 +247,19 @@ class TDCarAi(object):
         # Rotate the tyres by locking the limits:
         front_left_joint.SetLimits(new_angle, new_angle)
         front_right_joint.SetLimits(new_angle, new_angle)
+
+    @property
+    def active(self):
+        """
+        Check if the car is active
+        """
+        return self.body.active
+    
+    @active.setter
+    def active(self, enabled):
+        """
+        Enable or disable the body
+        """
+        self.body.active = enabled
+        for tyre in self.tyres:
+            tyre.body.active = enabled
