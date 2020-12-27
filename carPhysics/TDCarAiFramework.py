@@ -56,6 +56,7 @@ class TDCarAiFramework(Framework):
 
     def create_map(self):
         filename = "test.svg"
+        self.num_gates = 3
         all_wall_points, all_gate_data, start_coordinate = mapReader.read_svg_map(filename)
 
         # Create walls
@@ -120,6 +121,7 @@ class TDCarAiFramework(Framework):
                 # Update gate, if required
                 if car.lastGated == (gate.gateIndex - 1):
                     car.lastGated = gate.gateIndex
+                    car.last_gated_time = 0
 
     def BeginContact(self, contact):
         self.handle_contact(contact, True)
@@ -181,17 +183,25 @@ class TDCarAiFramework(Framework):
             reward = car.lastGated
 
             # TODO: Integrate `Done` calculation better
+            done = False
             # Do `Done` based on if the car has been still for a while
             if( abs(observations[0]) < 4):
                 controller.car_done_count += 1
             else:
                 controller.car_done_count = 0
+
+            # IF it has been too long since we last hit a gate, call it done
+            if car.last_gated_time > 300:
+                controller.car_done_count += 1
+            
+            # If we have looped around, call it done
+            if car.lastGated == self.num_gates:
+                done = True
+
             max_done = 100
             if controller.car_done_count > max_done:
                 done = True
                 controller.car_done_count = max_done  # cap it for numerical and presentation reasons.
-            else:
-                done = False
 
 
             

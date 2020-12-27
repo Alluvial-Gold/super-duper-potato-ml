@@ -163,6 +163,7 @@ class TDCarAi(object):
 
         # Track gating system
         self.lastGated = -1
+        self.last_gated_time = 0
 
     def get_observations(self):
         # Get speed from front left tyre
@@ -247,6 +248,8 @@ class TDCarAi(object):
         # Rotate the tyres by locking the limits:
         front_left_joint.SetLimits(new_angle, new_angle)
         front_right_joint.SetLimits(new_angle, new_angle)
+
+        self.last_gated_time += 1
 
     @property
     def active(self):
