@@ -38,10 +38,15 @@ Mouse:
 from __future__ import (print_function, absolute_import, division)
 import sys
 import warnings
+import typing
 
 import pygame
 from pygame.locals import (QUIT, KEYDOWN, KEYUP, MOUSEBUTTONDOWN,
                            MOUSEBUTTONUP, MOUSEMOTION, KMOD_LSHIFT)
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+mpl.use("Agg")
 
 from framework import (FrameworkBase, Keys)
 from settings import fwSettings
@@ -54,6 +59,31 @@ from Box2D import (b2DrawExtended, b2Vec2)
 #    print('Unable to load PGU; menu disabled.')
 #    print('(%s) %s' % (ex.__class__.__name__, ex))
 GUIEnabled = False
+
+class FigureCanvas():
+    """
+    A Canvas to draw a matplotlib figure onto
+    """
+    def __init__(self, fig, topleft):
+        self.canvas = mpl.backends.backend_agg.FigureCanvasAgg(fig)
+        self.topleft = topleft
+
+        self.requires_refresh = True
+
+    def render(self):
+        if self.requires_refresh:
+            self.canvas.draw()
+            renderer = self.canvas.get_renderer()
+
+            raw_data = renderer.tostring_rgb()
+            size = self.canvas.get_width_height()
+
+            self.image = pygame.image.fromstring(raw_data, size, "RGB")
+
+            self.requires_refresh = False
+        return self.image
+
+
 
 
 class PygameDraw(b2DrawExtended):
@@ -241,6 +271,8 @@ class PygameFramework(FrameworkBase):
         self.renderer = PygameDraw(surface=self.screen, test=self)
         self.world.renderer = self.renderer
 
+        self.canvases: typing.List[FigureCanvas] = []
+
         try:
             self.font = pygame.font.Font(None, 15)
         except IOError:
@@ -361,6 +393,10 @@ class PygameFramework(FrameworkBase):
 
             if GUIEnabled and self.settings.drawMenu:
                 self.gui_app.paint(self.screen)
+
+            # Render each canvas to image and plot
+            for canvas in self.canvases:
+                self.screen.blit(canvas.render(), canvas.topleft)
 
             pygame.display.flip()
             clock.tick(self.settings.hz)
