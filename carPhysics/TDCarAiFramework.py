@@ -1,11 +1,17 @@
 import math
 
 import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 from Box2D import *
+import gym
+import torch
 
 from framework import (Framework, Keys, main)
 from TDCarAi import TDCarAi
 import mapReader
+import TDCarAiEnv
+import pytorch_ai
 
 class Controller():
     """
@@ -15,9 +21,15 @@ class Controller():
         self.car_done_count = 0
         self.speed = 0
         self.angle = 0
+
+        self.done = False
         
-        self.k = 1/(2000*np.random.rand(1)[0])
-        self.speed_k = np.random.rand(1)[0]
+        # for MLP neural network
+        self.obs = []
+        self.rewards = []
+        self.acts = []
+
+
 
 class TDGate(object):
     """
@@ -39,15 +51,97 @@ class TDCarAiFramework(Framework):
 
         # Create map
         self.wall_body = self.world.CreateStaticBody(position=(0, 0))
-        start_coordinate = self.create_map()
+        self.start_coordinate = self.create_map()
 
-        num_cars = 200
-        raycast_angles = (-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)
-        raycast_angles = (-45, 0, 45)
-        self.cars = [TDCarAi(self.world, position=start_coordinate,
-                             raycast_angles=raycast_angles) for i in range(num_cars)]
+        num_cars = 100
+        self.raycast_angles = (-90, -45, -30, -20, -10, 0, 10, 20, 30, 45, 90)
+        #self.raycast_angles = (-45, 0, 45)
+        self.cars = [TDCarAi(self.world, position=self.start_coordinate,
+                             raycast_angles=self.raycast_angles) for i in range(num_cars)]
 
         self.controllers = [Controller() for i in range(num_cars)]
+
+        # OpenAI Gym Stuff
+        # See https://github.com/openai/spinningup/blob/master/spinup/examples/pytorch/pg_math/1_simple_pg.py
+        self.env = TDCarAiEnv.TDCarEnv()
+        # Get size of observation and action space
+        obs_dim = self.env.observation_space.shape[0]
+        #acts_dim = self.env.action_space.shape[0]
+        acts_dim = self.env.action_space.n
+
+        print(f"Observation Space Dim:{obs_dim}")
+        print(f"Action Space Dim:{acts_dim}")
+
+        self.epoch = 0
+
+        # Do this many simulations before updating parameters
+        self.batch_size = 400
+        self.batch_counter = 0
+
+        hidden_sizes= [32]
+        lr = 1e-2
+
+        # Make core of the policy network
+        logits_net = pytorch_ai.mlp(sizes=[obs_dim] + hidden_sizes + [acts_dim])
+        self.logits_net = logits_net
+        print(logits_net)
+        print(dir(logits_net))
+        print(list(logits_net.parameters()))
+
+        # Make function to compute action distribution
+        def get_policy(obs):
+            logits = logits_net(obs)
+            return torch.distributions.categorical.Categorical(logits=logits)
+
+        # Make action selection function (outputs actions sampled from policy)
+        def get_action(obs):
+            return get_policy(obs).sample().item()
+        self.get_action = get_action
+
+        # Make loss function whose gradient, for the right data, is policy gradient
+        def compute_loss(obs, act, weights):
+            logp = get_policy(obs).log_prob(act)
+            return -(logp*weights).mean()
+        self.compute_loss = compute_loss
+
+        # Make optimizer
+        self.optimizer = torch.optim.Adam(logits_net.parameters(), lr=lr)
+
+        # Prepare storage values
+        self.batch_obs = []
+        self.batch_acts = []
+        self.batch_weights = []
+
+        # Figure control
+        self.plot = True
+        self.plot_update_counter = 25
+        self.plot_update_counter_reset = self.plot_update_counter
+        if self.plot:
+            figsize = (3,3)
+            fig_x = 10
+            fig_y_offset = 200
+            fig_size_y = figsize[1] * 100
+
+            # Make figure to show reward over time
+            fig_index = 0
+            self.fig_reward, self.ax_reward = plt.subplots(figsize=figsize)
+            self.line_reward, = self.ax_reward.plot([], [])  # Line is the first return
+            self.ax_reward.set_xlabel("Timestep")
+            self.ax_reward.set_ylabel("Reward")
+            import pygame_framework
+            self.canvases.append(pygame_framework.FigureCanvas(self.fig_reward, (fig_x, fig_y_offset + fig_size_y*fig_index)))
+
+            # Make figure to show observations
+            fig_index = 1
+            self.fig_obs, self.ax_obs = plt.subplots(figsize=figsize)
+            self.obs_lines = []
+            for obs_index in range(obs_dim):
+                self.obs_lines.append(self.ax_obs.plot([], [], label=str(obs_index))[0])
+            self.ax_obs.legend()
+            self.ax_obs.set_title("Observations")
+            self.ax_obs.set_xlabel("Timestep")
+            self.canvases.append(pygame_framework.FigureCanvas(self.fig_obs, (fig_x, fig_y_offset + fig_size_y*fig_index)))
+
 
     def create_wall_segment(self, points):
         for p1, p2 in zip(points, points[1:]):
@@ -56,7 +150,7 @@ class TDCarAiFramework(Framework):
 
     def create_map(self):
         filename = "test.svg"
-        self.num_gates = 3
+        self.num_gates = 18
         all_wall_points, all_gate_data, start_coordinate = mapReader.read_svg_map(filename)
 
         # Create walls
@@ -150,15 +244,6 @@ class TDCarAiFramework(Framework):
 
     def Step(self, settings):
 
-        observations = self.cars[0].get_observations()
-        self.Print("Speed: " + f'{observations[0]:.2f}' + " Angle: " + f'{observations[1]:.2f}')
-
-        # Draw raycast
-        for car in self.cars[:2]:
-            for idx in range(len(car.raycast_angles)):
-                self.DrawCarRaycast(car, car.raycast_angles[idx], car.raycast_distances[idx])
-
-
 
         # TODO put the controller section in here
 
@@ -180,64 +265,155 @@ class TDCarAiFramework(Framework):
         """
         for car_index, (car, controller) in enumerate(zip(self.cars, self.controllers)):
             observations = car.get_observations()
-            reward = car.lastGated
+            controller.obs.append(observations)
+
+            reward = car.lastGated - car.last_gated_time/(car.life_time+1)  # Remove divide by zero - and it's close enough
+            #reward = -(self.num_gates - car.lastGated)
+            if len(controller.rewards) > 0:
+                reward += controller.rewards[-1]
+            controller.rewards.append(reward)
+            #self.Print(f"Reward:{reward}")
 
             # TODO: Integrate `Done` calculation better
-            done = False
+            controller.done = False
             # Do `Done` based on if the car has been still for a while
             if( abs(observations[0]) < 4):
                 controller.car_done_count += 1
             else:
-                controller.car_done_count = 0
+                controller.car_done_count -= 1
 
             # IF it has been too long since we last hit a gate, call it done
-            if car.last_gated_time > 300:
-                controller.car_done_count += 1
+            if car.last_gated_time > 90:
+                controller.car_done_count += 10
             
             # If we have looped around, call it done
             if car.lastGated == self.num_gates:
-                done = True
+                controller.done = True
 
-            max_done = 100
+            max_done = 30
             if controller.car_done_count > max_done:
-                done = True
+                controller.done = True
                 controller.car_done_count = max_done  # cap it for numerical and presentation reasons.
 
+                reward -= 1e6
 
-            
-            # The `action` consists of a speed and a direction
-            #   The calculation of this should probably be more in the controller
-            raycast_distances = observations[2:]
 
-            # Just have a constant speed
-            #controller.speed = 50
 
-            #speed proportional to centre ray
-            centre_ray = raycast_distances[len(raycast_distances)//2]
-            controller.speed = 40 + controller.speed_k * centre_ray
+            # Act
+            act = self.get_action(torch.as_tensor(observations, dtype=torch.float32))
+            controller.acts.append(act)
 
-            # Adjust angle based on the observations
-            port_ray = raycast_distances[-1]
-            starboard_ray = raycast_distances[0]
-            difference = port_ray - starboard_ray
-            controller.angle += np.deg2rad( controller.k * difference )
-            #controller.angle = 0
-            # Reset controller angle if they are about equal
-            if abs(difference) < 3:
-                controller.angle = 0
-
-            #self.Print(f"Starboard:{starboard_ray:.2f}, Port:{port_ray:.2f}")
-            #self.Print("Hence condition:%s for direction %.2f" % (port_ray < starboard_ray, np.rad2deg(controller.angle)))
-            #self.Print(f"Car {car_index}: Done Count:{controller.car_done_count}: Done:{done}")
+            # Convert action into required
+            controller.speed = 40
+            controller.angle = np.deg2rad( 10 * (1 if act else -1 ) )
 
             # Update car
-            if not done:
+            if not controller.done:
                 car.update(controller.speed, controller.angle, self.world, settings.hz)
             else:
+                # Turn off
                 car.active = False
 
+                # Store the observations, as one of the batch
+                self.batch_obs += controller.obs
+                self.batch_acts += controller.acts
+                self.batch_weights += [sum(controller.rewards)]*len(controller.rewards)  # The weight for each logprob(a|s) is R(tau). TODO: Understand this
+
+                # Delete car
+                self.world.DestroyBody(car.body)
+                for tyre in car.tyres:
+                    self.world.DestroyBody(tyre.body)
+                    del(tyre)
+                del(car)
+
+                # Reset
+                # Make new car
+                self.cars[car_index] = TDCarAi(self.world, position=self.start_coordinate,
+                                               raycast_angles=self.raycast_angles)
+                # Reset controller
+                controller.speed = 0
+                controller.angle = 0
+                controller.car_done_count = 0
+                controller.obs = []
+                controller.rewards = []
+                controller.acts = []
+
+                self.batch_counter += 1
+
+                # Take a single policy gradient update step
+                if self.batch_counter == self.batch_size:
+                    self.batch_counter = 0
+
+                    self.optimizer.zero_grad()
+                    batch_loss = self.compute_loss(obs=torch.as_tensor(self.batch_obs, dtype=torch.float32),
+                                                   act=torch.as_tensor(self.batch_acts, dtype=torch.float32),
+                                                   weights=torch.as_tensor(self.batch_weights, dtype=torch.float32))
+                    batch_loss.backward()
+                    self.optimizer.step()
+
+                    # Clear batch parameters
+                    self.batch_obs = []
+                    self.batch_acts = []
+                    self.batch_weights = []
+
+                    self.epoch += 1
+
+        self.Print(f"Epoch: {self.epoch}, Batch: {self.batch_counter}")
+
+        car_plot_index = 0
+        if self.plot:
+            # Don't want to update the image each time, because slow
+            self.plot_update_counter -= 1
+
+            # Update observations plot
+            if not self.controllers[car_plot_index].done:
+                for obs_idx, observation in enumerate(self.controllers[car_plot_index].obs[-1]):
+                    line = self.obs_lines[obs_idx]
+                    # Append current data
+                    data_x, data_y = line.get_data()
+                    data_x = np.append(data_x, len(data_x))
+                    data_y = np.append(data_y, observation)
+                    line.set_data(data_x, data_y)
+                # Update graph view limits
+                self.ax_obs.relim()
+                self.ax_obs.autoscale_view()
+                if self.plot_update_counter == 0:
+                    self.canvases[1].requires_refresh = True
+
+                # Plot the reward plot
+                line = self.line_reward
+                # Append current data
+                data_x, data_y = line.get_data()
+                data_x = np.append(data_x, len(data_x))
+                data_y = np.append(data_y, self.controllers[car_plot_index].rewards[-1])
+                line.set_data(data_x, data_y)
+                # Update graph view limits
+                self.ax_reward.relim()
+                self.ax_reward.autoscale_view()
+                if self.plot_update_counter == 0:
+                    self.canvases[0].requires_refresh = True
+
+            else:
+                # Car has reset -> clear observations plot data
+                for obs_idx in range(self.env.observation_space.shape[0]):
+                    line = self.obs_lines[obs_idx]
+                    line.set_data([], [])
+
+                # Reset reward plot
+                self.line_reward.set_data([], [])
+
+            if self.plot_update_counter == 0:
+                self.plot_update_counter = self.plot_update_counter_reset
 
 
+
+        observations = self.cars[car_plot_index].get_observations()
+        self.Print("Speed: " + f'{observations[0]:.2f}' + " Angle: " + f'{observations[1]:.2f}')
+
+        # Draw raycast
+        car = self.cars[car_plot_index]
+        for idx in range(len(car.raycast_angles)):
+            self.DrawCarRaycast(car, car.raycast_angles[idx], car.raycast_distances[idx])
 
         super(TDCarAiFramework, self).Step(settings)
 
