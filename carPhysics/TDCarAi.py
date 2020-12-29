@@ -165,6 +165,9 @@ class TDCarAi(object):
         self.lastGated = -1
         self.last_gated_time = 0
 
+        # Reward system
+        self.life_time = 0
+
     def get_observations(self):
         # Get speed from front left tyre
         tyre = self.tyres[2]
@@ -250,6 +253,7 @@ class TDCarAi(object):
         front_right_joint.SetLimits(new_angle, new_angle)
 
         self.last_gated_time += 1
+        self.life_time += 1
 
     @property
     def active(self):
